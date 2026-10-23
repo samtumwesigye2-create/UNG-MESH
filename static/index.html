@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>UNG-MESH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>[hidden]{display:none!important}body{margin:0}</style>
+<style>
+/* Layout: ops console — top status bar, track list | map | detail, event log beneath the map. Committed dark look. */
+:root{
+  --bg:#0a1017; --panel:#0f1720; --panel2:#141f2b; --line:#213041; --fg:#d5e0ea; --dim:#7b8ea2;
+  --accent:#e6a23c; --friend:#4fa3ff; --neutral:#58d08a; --unknown:#f0cf4a; --suspect:#ff6a3d; --crit:#ff4d5e;
+  --land:#101a17; --water:#0b1827;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:13px;overflow:hidden}
+*{box-sizing:border-box}
+button,select{font:inherit;color:inherit}
+.app{height:100%;display:grid;grid-template-rows:auto 1fr;padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:.06em}
+.brand small{font-weight:500;color:var(--dim);font-size:13px;letter-spacing:.12em;margin-left:8px;text-transform:uppercase}
+.clock{font-family:var(--f-mono);font-size:13px;color:var(--accent)}
+.stats{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--f-mono);font-size:12px;color:var(--dim)}
+.stats b{color:var(--fg);font-weight:500}
+.spacer{flex:1}
+.ctrl{display:flex;gap:4px;align-items:center}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px}
+.btn:hover{border-color:var(--dim)}
+.btn:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn.on{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:600}
+.btn.primary{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:600}
+.btn.danger{border-color:var(--crit);color:var(--crit)}
+.alertpill{font-family:var(--f-mono);font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+.alertpill.hot{background:var(--crit);border-color:var(--crit);color:#fff;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.6}}
+@media (prefers-reduced-motion:reduce){.alertpill.hot{animation:none}}
+
+main{display:grid;grid-template-columns:270px 1fr 310px;min-height:0}
+aside{background:var(--panel);display:flex;flex-direction:column;min-height:0;min-width:0}
+aside.left{border-right:1px solid var(--line)}
+aside.right{border-left:1px solid var(--line)}
+.sec{padding:10px 14px;border-bottom:1px solid var(--line)}
+.h{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:11px;padding:3px 8px;border-radius:3px;border:1px solid var(--line);background:transparent;cursor:pointer;color:var(--dim)}
+.chip.on{color:var(--fg);border-color:var(--dim);background:var(--panel2)}
+.list{overflow:auto;flex:1;min-height:0}
+.row{display:grid;grid-template-columns:14px 1fr auto;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid #18222e;cursor:pointer}
+.row:hover{background:var(--panel2)}
+.row.sel{background:#1b2a3a;box-shadow:inset 3px 0 0 var(--accent)}
+.row .id{font-family:var(--f-mono);font-size:12px}
+.row .sub{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-family:var(--f-mono);font-size:11px;color:var(--dim);text-align:right}
+.dot{width:10px;height:10px;border-radius:2px}
+
+.center{display:grid;grid-template-rows:1fr 170px;min-height:0;min-width:0}
+.mapwrap{position:relative;min-height:0;background:var(--water)}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px}
+.zoom .btn{width:32px;padding:4px 0}
+.legend{position:absolute;left:12px;bottom:12px;background:rgba(10,16,23,.85);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:11px;display:grid;grid-template-columns:auto auto;gap:4px 12px;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:6px}
+.log{border-top:1px solid var(--line);background:var(--panel);overflow:auto;font-family:var(--f-mono);font-size:12px}
+.log .h{position:sticky;top:0;background:var(--panel);padding:8px 14px 6px;margin:0;z-index:1}
+.ev{display:grid;grid-template-columns:70px 40px 1fr;gap:8px;padding:3px 14px;cursor:pointer}
+.ev:hover{background:var(--panel2)}
+.ev .t{color:var(--dim)}
+.ev .s{font-size:10px;font-weight:600}
+.ev.crit .s{color:var(--crit)} .ev.warn .s{color:var(--accent)} .ev.info .s{color:var(--dim)}
+.ev.crit.unack{background:rgba(255,77,94,.08)}
+
+.detail{overflow:auto;flex:1;min-height:0}
+.empty{padding:20px 14px;color:var(--dim);line-height:1.55}
+.empty b{color:var(--fg)}
+.dhead{display:flex;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dhead .big{font-family:var(--f-display);font-size:24px;font-weight:700;letter-spacing:.04em;line-height:1}
+.dhead .lbl{color:var(--dim);font-size:12px}
+.aff{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:3px;color:#0a1017}
+dl.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line)}
+dl.kv dt{color:var(--dim);font-size:12px}
+dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.bar{height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.src{font-family:var(--f-mono);font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:3px}
+.src.stale{opacity:.4}
+.act{padding:12px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.act select{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:5px 6px;width:100%}
+.act .line{display:flex;gap:6px;flex-wrap:wrap}
+.hint{color:var(--dim);font-size:11px;line-height:1.5}
+
+@media (max-width:980px){
+  body{overflow:auto}
+  .app{height:auto}
+  main{grid-template-columns:1fr}
+  .center{grid-template-rows:62vh 200px;order:1}
+  aside.right{order:2;border-left:0;border-top:1px solid var(--line)}
+  aside.left{order:3;border-right:0;border-top:1px solid var(--line)}
+  .list{max-height:320px}
+  .legend{display:none}
+}
+</style>
+
+</head><body>
+<style>
+.tag{font-family:var(--f-mono);font-size:9px;font-weight:600;letter-spacing:.08em;padding:1px 5px;border-radius:3px;border:1px solid var(--line);color:var(--dim);margin-left:6px;vertical-align:1px}
+.tag.live{color:var(--neutral);border-color:var(--neutral)}
+.conn{font-family:var(--f-mono);font-size:12px;display:flex;align-items:center;gap:6px;color:var(--dim)}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--crit)}
+.conn.ok i{background:var(--neutral)}
+.login{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:50;padding:16px}
+.login form{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:28px;width:min(360px,100%);display:flex;flex-direction:column;gap:12px}
+.login input,.act input{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:8px;color:var(--fg);font:inherit;width:100%}
+.login .err{color:var(--crit);font-size:12px;min-height:16px}
+.placing canvas{cursor:copy}
+.banner{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--accent);color:#1a1205;font-weight:600;padding:6px 12px;border-radius:4px;font-size:12px}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:4px;z-index:40}
+</style>
+
+<div class="login" id="login" hidden>
+  <form id="loginForm">
+    <div class="brand">UNG-MESH</div>
+    <p class="hint" style="margin:0">Common operating picture. Sign in with the operator password.</p>
+    <label for="pw" class="h" style="margin:0">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary" type="submit">Sign in</button>
+  </form>
+</div>
+
+<div class="app">
+<header>
+  <div class="brand">UNG-MESH<small>Common operating picture</small></div>
+  <div class="clock" id="clock">--:--:-- EAT</div>
+  <div class="conn" id="conn"><i></i><span>Connecting</span></div>
+  <div class="stats">
+    <span>Tracks <b id="stTracks">0</b></span>
+    <span>Live aircraft <b id="stLive">0</b></span>
+    <span>Sensors <b id="stSensors">0</b></span>
+    <span>Detections/min <b id="stDet">0</b></span>
+  </div>
+  <div class="spacer"></div>
+  <span class="alertpill" id="alertPill">0 alerts</span>
+  <button class="btn" id="ackBtn">Acknowledge</button>
+  <button class="btn" id="logoutBtn">Sign out</button>
+</header>
+<main>
+  <aside class="left">
+    <div class="sec">
+      <p class="h">Map layers</p>
+      <div class="chips" id="layers">
+        <button class="chip on" data-l="coverage">Sensor coverage</button>
+        <button class="chip on" data-l="zones">Zones</button>
+        <button class="chip on" data-l="trails">Trails</button>
+        <button class="chip" data-l="raw">Raw detections</button>
+        <button class="chip on" data-l="labels">Labels</button>
+      </div>
+    </div>
+    <div class="sec">
+      <p class="h">Show</p>
+      <div class="chips" id="filters">
+        <button class="chip on" data-f="suspect">Suspect</button>
+        <button class="chip on" data-f="unknown">Unknown</button>
+        <button class="chip on" data-f="neutral">Neutral</button>
+        <button class="chip on" data-f="friendly">Friendly</button>
+        <button class="chip on" data-f="sim">Simulated</button>
+      </div>
+    </div>
+    <div class="sec"><button class="btn" id="addZone" style="width:100%">Add restricted zone</button></div>
+    <p class="h" style="padding:10px 14px 0">Tracks &amp; assets <span id="listCount"></span></p>
+    <div class="list" id="trackList"></div>
+  </aside>
+
+  <section class="center">
+    <div class="mapwrap" id="mapwrap">
+      <canvas id="map" aria-label="Live map with fused tracks"></canvas>
+      <div class="banner" id="placeBanner" hidden>Click the map to place the zone centre · Esc to cancel</div>
+      <div class="zoom">
+        <button class="btn" id="zin" aria-label="Zoom in">+</button>
+        <button class="btn" id="zout" aria-label="Zoom out">−</button>
+        <button class="btn" id="zfit" aria-label="Reset view">⌂</button>
+        <button class="btn" id="zwide" aria-label="Show all of Uganda" title="Wide view">◎</button>
+      </div>
+      <div class="legend">
+        <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#4fa3ff"/></svg>Friendly</span>
+        <span><svg width="12" height="12"><rect x="1" y="1" width="10" height="10" fill="#58d08a"/></svg>Neutral</span>
+        <span><svg width="12" height="12"><g fill="#f0cf4a"><circle cx="4" cy="6" r="3"/><circle cx="8" cy="6" r="3"/><circle cx="6" cy="4" r="3"/><circle cx="6" cy="8" r="3"/></g></svg>Unknown</span>
+        <span><svg width="12" height="12"><path d="M6 0L12 6L6 12L0 6Z" fill="#ff6a3d"/></svg>Suspect</span>
+      </div>
+    </div>
+    <div class="log" id="log"><p class="h">Event log</p><div id="logBody"></div></div>
+  </section>
+
+  <aside class="right">
+    <div class="detail" id="detail"></div>
+  </aside>
+</main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(()=>{
+const KM=111.2;
+const dist=(a,b,c,d)=>Math.hypot((a-c)*KM,(b-d)*KM);
+const kmS=k=>k*1.852/3600;
+const LAKE=[[0.30,32.95],[0.30,32.72],[0.295,32.68],[0.285,32.655],[0.27,32.645],[0.245,32.640],[0.24,32.625],[0.255,32.610],[0.235,32.595],[0.205,32.585],[0.17,32.575],[0.14,32.560],[0.115,32.535],[0.095,32.510],[0.075,32.495],[0.055,32.485],[0.035,32.470],[0.020,32.455],[0.015,32.440],[0.025,32.425],[0.045,32.415],[0.060,32.395],[0.085,32.380],[0.095,32.350],[0.080,32.320],[0.050,32.290],[0.020,32.250],[0.0,32.10],[-0.40,32.10],[-0.40,32.95]];
+const ROAD=[[0.315,32.582],[0.27,32.575],[0.235,32.565],[0.198,32.552],[0.16,32.535],[0.12,32.51],[0.09,32.49],[0.065,32.475],[0.05,32.462]];
+const PLACES=[["Kampala",0.3476,32.5825],["Entebbe",0.064,32.462],["Port Bell",0.288,32.652],["Kajjansi",0.198,32.552],["Lake Victoria",-0.05,32.70],["Murchison Bay",0.21,32.615],["Gaba",0.245,32.640],
+ ["Jinja",0.4244,33.2042],["Mukono",0.3533,32.7553],["Mpigi",0.225,32.3136],["Masaka",-0.3333,31.7333],["Mityana",0.4175,32.0228],["Luweero",0.8492,32.4731],["Mbale",1.0806,34.175],["Gulu",2.7724,32.2881],["Mbarara",-0.6072,30.6545],["Fort Portal",0.671,30.275],["Lira",2.2499,32.8999]];
+const AIRPORT=[0.0424,32.4435];
+const S={st:null,tracks:new Map(),offset:0,sel:null,placing:false,
+ layers:{coverage:true,zones:true,trails:true,raw:false,labels:true},filt:{suspect:true,unknown:true,neutral:true,friendly:true,sim:true}};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nowS=()=>Date.now()/1000-S.offset;
+function clock(t){return new Date(t*1000+3*3600e3).toISOString().substr(11,8)}
+function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3500)}
+async function api(path,body,method){
+  const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  if(r.status===401){showLogin();throw new Error('Sign in first')}
+  const j=await r.json().catch(()=>({}));if(!r.ok){toast(j.detail||'Request failed');throw new Error(j.detail)}return j;
+}
+
+// ---------- login + connection ----------
+function showLogin(){$('login').hidden=false;$('pw').focus()}
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginErr').textContent='';
+  const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pw').value})});
+  if(r.ok){$('login').hidden=true;$('pw').value='';connect()}else{$('loginErr').textContent='Wrong password. Try again.'}});
+$('logoutBtn').onclick=async()=>{await fetch('/api/logout',{method:'POST'});if(ws)ws.close();showLogin()};
+let ws=null,retry=0;
+function setConn(ok,txt){$('conn').className='conn'+(ok?' ok':'');$('conn').lastChild.textContent=txt}
+function connect(){
+  if(ws&&ws.readyState<2)return;
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onopen=()=>{retry=0;setConn(true,'Live');if(S.layers.raw)ws.send(JSON.stringify({raw:true}))};
+  ws.onmessage=m=>onState(JSON.parse(m.data));
+  ws.onclose=e=>{setConn(false,'Reconnecting');if(e.code===4401){showLogin();return}setTimeout(connect,Math.min(10000,1000*2**retry++))};
+}
+fetch('/api/me',{credentials:'same-origin'}).then(r=>r.ok?connect():showLogin());
+
+let lastTopEvent=null,firstState=true;
+function onState(st){
+  S.st=st;S.offset=Date.now()/1000-st.now;
+  S.tracks=new Map(st.tracks.map(t=>[t.id,t]));
+  if(S.sel&&S.sel.kind!=='newzone'&&!entity(S.sel)&&!S.sel.pending){S.sel=null}
+  if(S.sel&&S.sel.pending&&entity(S.sel))S.sel.pending=false;
+  if(firstState||detailKey()!==detailFor){firstState=false;renderDetail()}
+}
+
+// ---------- map ----------
+const cv=$('map'),ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+const V={lat:0.14,lon:32.56,scale:1600};
+function fit(){V.lat=0.14;V.lon=32.56;V.scale=Math.min(W/0.5,H/0.42)}
+function wide(){V.lat=0.6;V.lon=32.4;V.scale=Math.min(W/5.5,H/5)}
+function resize(){const r=cv.getBoundingClientRect();DPR=window.devicePixelRatio||1;const first=!W;W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;if(first)fit()}
+new ResizeObserver(resize).observe(cv);
+const X=lo=>(lo-V.lon)*V.scale+W/2,Y=la=>(V.lat-la)*V.scale+H/2;
+const kmPx=km=>km/KM*V.scale;
+const COL={friendly:'#4fa3ff',neutral:'#58d08a',unknown:'#f0cf4a',suspect:'#ff6a3d'};
+const SCOL={radar:'#9fb6cc',adsb:'#58d08a',ais:'#4fa3ff',eo:'#e6a23c',other:'#c9a0ff'};
+function sym(x,y,aff,dom,r,alpha=1){
+  ctx.save();ctx.globalAlpha=alpha;ctx.fillStyle=COL[aff];ctx.strokeStyle='#0a1017';ctx.lineWidth=1.5;ctx.beginPath();
+  if(aff==='friendly')ctx.arc(x,y,r,0,7);
+  else if(aff==='neutral')ctx.rect(x-r*.85,y-r*.85,r*1.7,r*1.7);
+  else if(aff==='suspect'){ctx.moveTo(x,y-r*1.2);ctx.lineTo(x+r*1.2,y);ctx.lineTo(x,y+r*1.2);ctx.lineTo(x-r*1.2,y);ctx.closePath()}
+  else{const q=r*.5;for(const[dx,dy]of[[-q,0],[q,0],[0,-q],[0,q]]){ctx.moveTo(x+dx+r*.6,y+dy);ctx.arc(x+dx,y+dy,r*.6,0,7)}}
+  ctx.fill();ctx.stroke();
+  ctx.fillStyle='#0a1017';ctx.font='600 9px "IBM Plex Mono",monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(dom==='air'?'A':dom==='surface'?'S':'G',x,y+0.5);ctx.restore();
+}
+function poly(pts,close){ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(X(p[1]),Y(p[0])):ctx.moveTo(X(p[1]),Y(p[0])));if(close)ctx.closePath()}
+const visible=t=>S.filt[t.aff]&&(S.filt.sim||!t.sim);
+const spd=t=>Math.hypot(t.vlat,t.vlon)*KM*3600/1.852;
+const crs=t=>(Math.atan2(t.vlon,t.vlat)*180/Math.PI+360)%360;
+function tpos(t){const dt=Math.min(30,Math.max(0,nowS()-t.last));return[t.lat+t.vlat*dt,t.lon+t.vlon*dt]}
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);ctx.textBaseline='alphabetic';
+  ctx.fillStyle='#101a17';ctx.fillRect(0,0,W,H);
+  poly(LAKE,true);ctx.fillStyle='#0b1827';ctx.fill();ctx.strokeStyle='#1d3a52';ctx.lineWidth=1;ctx.stroke();
+  const steps=[0.01,0.025,0.05,0.1,0.25,0.5,1];const step=steps.find(s=>s*V.scale>90)||1;
+  ctx.strokeStyle='rgba(125,145,165,.10)';ctx.fillStyle='rgba(160,180,200,.45)';ctx.font='10px "IBM Plex Mono",monospace';
+  for(let la=Math.ceil((V.lat-H/2/V.scale)/step)*step;la<V.lat+H/2/V.scale;la+=step){const y=Y(la);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();ctx.textAlign='left';ctx.fillText(`${Math.abs(la).toFixed(2)}°${la>=0?'N':'S'}`,4,y-3)}
+  for(let lo=Math.ceil((V.lon-W/2/V.scale)/step)*step;lo<V.lon+W/2/V.scale;lo+=step){const x=X(lo);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();ctx.textAlign='center';ctx.fillText(`${lo.toFixed(2)}°E`,x,H-6)}
+  poly(ROAD);ctx.strokeStyle='rgba(200,180,140,.25)';ctx.lineWidth=2;ctx.stroke();
+  ctx.font='600 12px "Barlow Condensed",sans-serif';ctx.textAlign='center';
+  for(const[n,la,lo]of PLACES){const big=PLACES.indexOf(PLACES.find(p=>p[0]===n))>6;if(big&&V.scale>1200)continue;ctx.fillStyle=n.includes('Lake')||n.includes('Bay')?'rgba(90,140,190,.6)':'rgba(190,200,210,.45)';ctx.fillText(n.toUpperCase(),X(lo),Y(la)-10);if(big){ctx.fillRect(X(lo)-1.5,Y(la)-1.5,3,3)}}
+  ctx.fillStyle='rgba(190,200,210,.5)';ctx.font='10px "IBM Plex Mono",monospace';ctx.fillText('HUEN 17/35',X(AIRPORT[1]),Y(AIRPORT[0])+16);
+  const st=S.st;if(!st)return;
+  if(S.layers.coverage)for(const s of st.sensors){if(s.range>100)continue;ctx.beginPath();ctx.arc(X(s.lon),Y(s.lat),kmPx(s.range),0,7);ctx.strokeStyle=s.on?'rgba(159,182,204,.16)':'rgba(255,77,94,.15)';ctx.setLineDash([3,5]);ctx.stroke();ctx.setLineDash([])}
+  if(S.layers.zones)for(const z of st.zones){const x=X(z.lon),y=Y(z.lat),r=kmPx(z.r);const hot=st.tracks.some(t=>t.zones.includes(z.id)&&t.aff==='suspect');
+    ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=hot?'rgba(255,77,94,.16)':'rgba(255,77,94,.06)';ctx.fill();ctx.setLineDash([6,4]);ctx.strokeStyle=S.sel&&S.sel.id===z.id?'#fff':'rgba(255,77,94,.7)';ctx.lineWidth=1.2;ctx.stroke();ctx.setLineDash([]);
+    if(S.layers.labels&&r>12){ctx.fillStyle='rgba(255,120,130,.85)';ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='center';ctx.fillText(z.name.toUpperCase(),x,y-r-5)}}
+  for(const s of st.sensors){if(s.id==='NET')continue;const x=X(s.lon),y=Y(s.lat);ctx.fillStyle=s.on?(SCOL[s.type]||SCOL.other):'#ff4d5e';ctx.strokeStyle='#0a1017';
+    ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.closePath();ctx.fill();ctx.stroke();
+    if(S.sel&&S.sel.id===s.id){ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.strokeStyle='#fff';ctx.stroke()}
+    if(S.layers.labels){ctx.fillStyle='rgba(200,210,220,.6)';ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillText(s.id,x+7,y+4)}}
+  if(S.layers.raw&&st.raw)for(const r of st.raw){ctx.globalAlpha=Math.max(0.1,1-(nowS()-r.t)/4);ctx.fillStyle=SCOL[r.type]||'#fff';ctx.fillRect(X(r.lon)-1.5,Y(r.lat)-1.5,3,3)}ctx.globalAlpha=1;
+  for(const t of st.tracks){if(!visible(t))continue;
+    const[la,lo]=tpos(t),x=X(lo),y=Y(la);if(x<-50||x>W+50||y<-50||y>H+50)continue;
+    const alpha=t.status==='live'?1:t.status==='coasting'?0.55:0.25;
+    if(S.layers.trails&&t.hist.length>1){poly(t.hist);ctx.strokeStyle=COL[t.aff];ctx.globalAlpha=0.35*alpha;ctx.lineWidth=1.2;ctx.stroke();ctx.globalAlpha=1}
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(X(lo+t.vlon*60),Y(la+t.vlat*60));ctx.strokeStyle=COL[t.aff];ctx.globalAlpha=alpha;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
+    sym(x,y,t.aff,t.domain,7,alpha);
+    if(S.sel&&S.sel.id===t.id){ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
+    if(S.layers.labels){ctx.fillStyle='rgba(225,232,240,.85)';ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='left';
+      ctx.fillText(`${t.id}${t.call?' '+t.call:''}${t.sim?'':' ●'}`,x+11,y-2);
+      ctx.fillStyle='rgba(160,175,190,.75)';ctx.fillText(`${Math.round(spd(t))}kt${t.domain==='air'?' '+String(Math.round(t.alt/100)).padStart(3,'0'):''}`,x+11,y+9)}}
+  if(S.filt.friendly)for(const a of st.assets){const x=X(a.lon),y=Y(a.lat);
+    if(S.layers.trails&&a.trail.length>1){poly(a.trail);ctx.strokeStyle='rgba(79,163,255,.35)';ctx.lineWidth=1.2;ctx.stroke()}
+    let tg=null;if(a.task.type==='investigate'){const t=S.tracks.get(a.task.target);if(t)tg=tpos(t)}else if(a.task.type==='rtb')tg=a.home;
+    if(tg){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(X(tg[1]),Y(tg[0]));ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(79,163,255,.7)';ctx.stroke();ctx.setLineDash([])}
+    ctx.beginPath();ctx.arc(x,y,kmPx(a.eo),0,7);ctx.strokeStyle='rgba(79,163,255,.12)';ctx.stroke();
+    sym(x,y,'friendly',a.domain,8);
+    if(S.sel&&S.sel.id===a.id){ctx.beginPath();ctx.arc(x,y,15,0,7);ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
+    if(S.layers.labels){ctx.fillStyle='#9cc8ff';ctx.font='600 10px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillText(a.id+(a.batt!=null?` ${Math.round(a.batt)}%`:''),x+12,y+4)}}
+  const kms=[1,2,5,10,20,50,100].find(k=>kmPx(k)>60)||100,px=kmPx(kms);ctx.fillStyle='rgba(200,210,220,.7)';ctx.fillRect(W-24-px,H-28,px,2);ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='center';ctx.fillText(`${kms} km`,W-24-px/2,H-34);
+}
+
+let drag=null;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,lat:V.lat,lon:V.lon,moved:false}});
+cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;if(drag.moved){V.lon=drag.lon-dx/V.scale;V.lat=drag.lat+dy/V.scale}});
+cv.addEventListener('pointerup',e=>{if(drag&&!drag.moved){const r=cv.getBoundingClientRect();clickAt(e.clientX-r.left,e.clientY-r.top)}drag=null});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.2:1/1.2)},{passive:false});
+function zoom(f){V.scale=Math.max(80,Math.min(30000,V.scale*f))}
+$('zin').onclick=()=>zoom(1.4);$('zout').onclick=()=>zoom(1/1.4);$('zfit').onclick=fit;$('zwide').onclick=wide;
+const toLL=(px,py)=>[V.lat-(py-H/2)/V.scale,V.lon+(px-W/2)/V.scale];
+function clickAt(px,py){
+  if(S.placing){const[la,lo]=toLL(px,py);endPlacing();S.sel={kind:'newzone',lat:la,lon:lo};renderDetail();return}
+  const st=S.st;if(!st)return;let best=null,bd=18;
+  const consider=(id,kind,la,lo)=>{const d=Math.hypot(X(lo)-px,Y(la)-py);if(d<bd){bd=d;best={id,kind}}};
+  if(S.filt.friendly)st.assets.forEach(a=>consider(a.id,'asset',a.lat,a.lon));
+  st.tracks.forEach(t=>{if(visible(t))consider(t.id,'track',...tpos(t))});
+  st.sensors.forEach(s=>{if(s.id!=='NET')consider(s.id,'sensor',s.lat,s.lon)});
+  if(!best){const[la,lo]=toLL(px,py);for(const z of st.zones)if(dist(la,lo,z.lat,z.lon)<z.r){best={id:z.id,kind:'zone'};break}}
+  select(best);
+}
+function startPlacing(){S.placing=true;$('placeBanner').hidden=false;$('mapwrap').classList.add('placing')}
+function endPlacing(){S.placing=false;$('placeBanner').hidden=true;$('mapwrap').classList.remove('placing')}
+$('addZone').onclick=startPlacing;
+addEventListener('keydown',e=>{if(e.key==='Escape'&&S.placing)endPlacing()});
+function select(s){S.sel=s;renderDetail();renderList()}
+function centerOn(la,lo){V.lat=la;V.lon=lo;if(V.scale<3000)V.scale=3000}
+
+// ---------- panels ----------
+function entity(sel){const st=S.st;if(!sel||!st)return null;
+  if(sel.kind==='track')return S.tracks.get(sel.id);if(sel.kind==='asset')return st.assets.find(a=>a.id===sel.id);
+  if(sel.kind==='sensor')return st.sensors.find(s=>s.id===sel.id);if(sel.kind==='zone')return st.zones.find(z=>z.id===sel.id);if(sel.kind==='newzone')return sel;return null}
+const affTag=a=>`<span class="aff" style="background:${COL[a]}">${a}</span>`;
+const srcTag=t=>t.sim?'<span class="tag">SIM</span>':'<span class="tag live">LIVE</span>';
+function eta(a,la,lo){const s=dist(a.lat,a.lon,la,lo)/kmS(a.spd);return `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`}
+const pri=t=>({suspect:0,unknown:1,neutral:2,friendly:3})[t.aff]*100+(t.status==='live'?0:50);
+const ll=(la,lo)=>`${Math.abs(la).toFixed(4)}°${la>=0?'N':'S'} ${lo.toFixed(4)}°E`;
+function setT(id,v){const e=$(id);if(e&&e.textContent!==v)e.textContent=v}
+function sensorName(id){const st=S.st;const s=st&&st.sensors.find(x=>x.id===id);if(s)return s.name;const a=st&&st.assets.find(x=>x.id===id);return a?a.name:id}
+let detailFor=null;
+const detailKey=()=>S.sel&&entity(S.sel)?S.sel.kind+':'+(S.sel.id||''):null;
+function renderDetail(){
+  detailFor=detailKey();
+  const el=$('detail'),s=S.sel,st=S.st,e=entity(s);
+  if(!s||!st||!e){
+    el.innerHTML=`<div class="empty"><p class="h">Nothing selected</p><p>Click any symbol on the map or a row in the list.</p>
+    <p><b>What is live:</b> tracks marked <span class="tag live">LIVE</span> are real aircraft from public ADS-B networks (zoom out with ◎ to see all of Uganda). Tracks marked <span class="tag">SIM</span> are simulated until you connect real radars, cameras or AIS.</p>
+    <p><b>Try this:</b> when a <span style="color:var(--suspect)">suspect</span> drone enters a red zone, send <b>UAV-2</b> or <b>GT-1</b> to investigate it.</p>
+    <p class="hint">Every action here is shared: anyone signed in sees the same picture and the same alerts.</p></div>`;return}
+  if(s.kind==='newzone'){
+    el.innerHTML=`<div class="dhead"><div><div class="big">New zone</div><div class="lbl">${ll(s.lat,s.lon)}</div></div></div>
+    <form class="act" id="zForm"><label class="h" for="zName" style="margin:0">Name</label><input id="zName" required maxlength="60" placeholder="e.g. Fuel depot Kampala">
+    <label class="h" for="zR" style="margin:0">Radius (km)</label><input id="zR" type="number" step="0.1" min="0.1" max="50" value="1">
+    <p class="h" style="margin:0">Alert on</p><div class="line">${['air','surface','ground'].map(d=>`<label class="chip on"><input type="checkbox" value="${d}" checked> ${d}</label>`).join('')}</div>
+    <div class="line"><button class="btn primary" type="submit">Create zone</button><button class="btn" type="button" id="zCancel">Cancel</button></div></form>`;
+    $('zCancel').onclick=()=>select(null);
+    $('zForm').onsubmit=async ev=>{ev.preventDefault();const dom=[...el.querySelectorAll('input[type=checkbox]:checked')].map(i=>i.value);
+      const z=await api('/api/zones',{name:$('zName').value,lat:s.lat,lon:s.lon,r:+$('zR').value,dom});toast(`Zone ${z.id} created`);select({kind:'zone',id:z.id,pending:true})};
+    $('zName').focus();return}
+  if(s.kind==='track'){const t=e;
+    const avail=st.assets.filter(a=>!(a.batt!=null&&a.batt<25)).map(a=>`<option value="${a.id}">${a.id} · ${esc(a.name)} · ETA ${eta(a,t.lat,t.lon)}</option>`).join('');
+    el.innerHTML=`<div class="dhead"><div><div class="big">${t.id}${srcTag(t)}</div><div class="lbl" id="dLabel"></div></div><div style="margin-left:auto;text-align:right" id="dAff"></div></div>
+    <dl class="kv"><dt>Domain</dt><dd>${t.domain}</dd><dt>Position</dt><dd id="dPos"></dd><dt>Course / speed</dt><dd id="dCs"></dd>
+      ${t.domain==='air'?'<dt>Altitude</dt><dd id="dAlt"></dd>':''}<dt>Status</dt><dd id="dSt"></dd><dt>First seen</dt><dd>${clock(t.first)}</dd>
+      <dt>In zones</dt><dd id="dZ"></dd><dt>Confidence</dt><dd><span id="dConf"></span><div class="bar"><i id="dConfBar"></i></div></dd></dl>
+    <div class="sec"><p class="h">Contributing sources</p><div class="chips" id="dSrc"></div></div>
+    <div class="act"><p class="h" style="margin:0">Task an asset</p><select id="taskSel">${avail}</select><button class="btn primary" id="taskGo">Send to investigate</button>
+      <p class="hint">The asset moves to the contact and identifies it within 1 km.${t.sim?'':' Field assets are simulated, so they can follow a real aircraft on the map but cannot identify it.'}</p></div>
+    <div class="act"><p class="h" style="margin:0">Set classification</p><div class="line">${['friendly','neutral','unknown','suspect'].map(a=>`<button class="btn" data-aff="${a}">${a}</button>`).join('')}</div></div>
+    <div class="act"><div class="line"><button class="btn" id="ctr">Center map</button></div></div>`;
+    $('taskGo').onclick=()=>api(`/api/assets/${$('taskSel').value}/task`,{type:'investigate',target:t.id}).then(()=>toast('Task sent'));
+    el.querySelectorAll('[data-aff]').forEach(b=>b.onclick=()=>api(`/api/tracks/${t.id}/classify`,{aff:b.dataset.aff}).then(()=>toast(`${t.id} set to ${b.dataset.aff}`)));
+  }else if(s.kind==='asset'){const a=e;
+    const trs=st.tracks.filter(t=>t.status!=='lost').sort((x,y)=>pri(x)-pri(y)).map(t=>`<option value="${t.id}">${t.id} · ${esc(t.label)} · ETA ${eta(a,t.lat,t.lon)}</option>`).join('');
+    el.innerHTML=`<div class="dhead"><div><div class="big">${a.id}${a.sim?'<span class="tag">SIM</span>':''}</div><div class="lbl">${esc(a.name)}</div></div><div style="margin-left:auto">${affTag('friendly')}</div></div>
+    <dl class="kv"><dt>Domain</dt><dd>${a.domain}</dd><dt>Base</dt><dd>${esc(a.homeName)}</dd><dt>Task</dt><dd id="dTask"></dd><dt>Position</dt><dd id="dPos"></dd><dt>Max speed</dt><dd>${a.spd} kt</dd><dt>Camera range</dt><dd>${a.eo} km</dd>
+    ${a.batt!=null?'<dt>Battery</dt><dd><span id="dBatt"></span><div class="bar"><i id="dBattBar"></i></div></dd>':''}</dl>
+    <div class="act"><p class="h" style="margin:0">Investigate a track</p><select id="aTrk">${trs}</select><button class="btn primary" id="aInv">Send</button></div>
+    <div class="act"><p class="h" style="margin:0">Patrol a zone</p><select id="aZone">${st.zones.map(z=>`<option value="${z.id}">${esc(z.name)}</option>`).join('')}</select><button class="btn" id="aPat">Start patrol</button></div>
+    <div class="act"><div class="line"><button class="btn" id="aRtb">Return to base</button><button class="btn" id="aHold">Hold</button><button class="btn" id="ctr">Center map</button></div></div>`;
+    const T=(b)=>api(`/api/assets/${a.id}/task`,b).then(()=>toast('Task sent'));
+    $('aInv').onclick=()=>{if($('aTrk').value)T({type:'investigate',target:$('aTrk').value})};
+    $('aPat').onclick=()=>T({type:'patrol',target:$('aZone').value});$('aRtb').onclick=()=>T({type:'rtb'});$('aHold').onclick=()=>T({type:'idle'});
+  }else if(s.kind==='sensor'){const sn=e;
+    el.innerHTML=`<div class="dhead"><div><div class="big">${sn.id}${sn.sim?'<span class="tag">SIM</span>':'<span class="tag live">LIVE</span>'}</div><div class="lbl">${esc(sn.name)}</div></div></div>
+    <dl class="kv"><dt>Type</dt><dd>${({radar:'Radar',adsb:'ADS-B (aircraft transponders)',ais:'AIS (vessel transponders)',eo:'EO/IR camera'})[sn.type]||esc(sn.type)}</dd><dt>Range</dt><dd>${sn.range} km</dd>
+    <dt>Status</dt><dd id="dSt"></dd><dt>Detections / min</dt><dd id="dHits"></dd><dt>Tracks fed now</dt><dd id="dFed"></dd>${sn.external?'<dt>Last report</dt><dd id="dLast"></dd>':''}</dl>
+    <div class="act"><button class="btn" id="sTog"></button><p class="hint">Taking a sensor offline ignores its reports. Tracks that relied on it lose that source and may start coasting.</p><div class="line"><button class="btn" id="ctr">Center map</button></div></div>`;
+    $('sTog').onclick=()=>api(`/api/sensors/${sn.id}/toggle`,{});
+  }else{const z=e;
+    el.innerHTML=`<div class="dhead"><div><div class="big">${z.id}</div><div class="lbl">${esc(z.name)}</div></div></div>
+    <dl class="kv"><dt>Centre</dt><dd>${ll(z.lat,z.lon)}</dd><dt>Radius</dt><dd>${z.r} km</dd><dt>Alerts on</dt><dd>${z.dom.join(', ')}</dd><dt>Tracks inside</dt><dd id="dIn"></dd></dl>
+    <div class="act"><p class="hint">An unknown track entering this zone is raised to suspect and creates a critical alert.</p>
+    <div class="line"><button class="btn" id="ctr">Center map</button><button class="btn danger" id="zDel">Delete zone</button></div><div id="zConfirm"></div></div>`;
+    $('zDel').onclick=()=>{$('zConfirm').innerHTML=`<p class="hint">Delete ${esc(z.name)}? Assets patrolling it will stop.</p><button class="btn danger" id="zYes">Yes, delete</button>`;
+      $('zYes').onclick=()=>api(`/api/zones/${z.id}`,null,'DELETE').then(()=>{toast('Zone deleted');select(null)})};
+  }
+  const c=$('ctr');if(c)c.onclick=()=>{const x=entity(S.sel);if(x){const p=S.sel.kind==='track'?tpos(x):[x.lat,x.lon];centerOn(...p)}};
+  refreshDetail();
+}
+function refreshDetail(){
+  const s=S.sel,e=entity(s),now=nowS();if(!e)return;
+  if(s.kind==='track'){const t=e;
+    setT('dLabel',t.label);$('dAff').innerHTML=affTag(t.aff)+(t.affSrc!=='auto'?`<div class="hint" style="margin-top:3px">${t.affSrc}</div>`:'');
+    const p=tpos(t);setT('dPos',ll(...p));setT('dCs',`${String(Math.round(crs(t))).padStart(3,'0')}° / ${Math.round(spd(t))} kt`);
+    if($('dAlt'))setT('dAlt',`${t.alt.toLocaleString()} ft`);
+    setT('dSt',t.status+(t.status!=='live'?` (${Math.round(now-t.last)}s)`:''));
+    setT('dZ',t.zones.map(id=>(S.st.zones.find(z=>z.id===id)||{name:id}).name).join(', ')||'—');
+    setT('dConf',Math.round(t.conf*100)+'%');$('dConfBar').style.width=t.conf*100+'%';
+    $('dSrc').innerHTML=Object.entries(t.src).sort((a,b)=>b[1]-a[1]).map(([id,ts])=>`<span class="src ${now-ts>12?'stale':''}" title="${esc(sensorName(id))}">${esc(id)} · ${Math.round(now-ts)}s</span>`).join('');
+  }
+  if(s.kind==='asset'){const a=e,T=a.task;
+    setT('dTask',T.type==='investigate'?`Investigate ${T.target}${T.onStation?' (on station)':''}`:T.type==='patrol'?`Patrol ${T.target}`:T.type==='rtb'?'Returning to base':'Holding');
+    setT('dPos',ll(a.lat,a.lon));if(a.batt!=null){setT('dBatt',a.batt.toFixed(0)+'%');$('dBattBar').style.width=a.batt+'%';$('dBattBar').style.background=a.batt<25?'var(--crit)':'var(--accent)'}}
+  if(s.kind==='sensor'){const sn=e;setT('dSt',sn.on?'Online':'Offline');setT('dHits',String(sn.hits));
+    setT('dFed',String(S.st.tracks.filter(t=>t.src[sn.id]&&now-t.src[sn.id]<20).length));
+    if($('dLast'))setT('dLast',sn.lastSeen?`${Math.round(now-sn.lastSeen)}s ago`:'never');
+    setT('sTog',sn.on?'Take offline':'Bring online');$('sTog').className='btn'+(sn.on?' danger':'')}
+  if(s.kind==='zone')setT('dIn',S.st.tracks.filter(t=>t.zones.includes(s.id)).map(t=>t.id).join(', ')||'None');
+}
+function renderList(){
+  const st=S.st;if(!st)return;const rows=[];
+  const trs=st.tracks.filter(visible).sort((a,b)=>pri(a)-pri(b)||a.id.localeCompare(b.id));
+  for(const t of trs){const nsrc=Object.values(t.src).filter(x=>nowS()-x<20).length;
+    rows.push(`<div class="row ${S.sel&&S.sel.id===t.id?'sel':''}" data-id="${t.id}" data-k="track"><span class="dot" style="background:${COL[t.aff]};opacity:${t.status==='live'?1:.45}"></span><div style="min-width:0"><div class="id">${t.id}${t.call?' · '+esc(t.call):''}${t.sim?'':'<span class="tag live">LIVE</span>'}</div><div class="sub">${esc(t.label)}</div></div><div class="meta">${Math.round(spd(t))} kt<br>${nsrc} src</div></div>`)}
+  if(S.filt.friendly)for(const a of st.assets)rows.push(`<div class="row ${S.sel&&S.sel.id===a.id?'sel':''}" data-id="${a.id}" data-k="asset"><span class="dot" style="background:${COL.friendly};border-radius:50%"></span><div style="min-width:0"><div class="id">${a.id}</div><div class="sub">${a.task.type==='investigate'?'→ '+a.task.target:a.task.type==='patrol'?'Patrol '+a.task.target:a.task.type==='rtb'?'Returning':'Holding'}</div></div><div class="meta">${a.batt!=null?Math.round(a.batt)+'%':''}</div></div>`);
+  $('trackList').innerHTML=rows.join('');$('listCount').textContent=rows.length;
+}
+$('trackList').addEventListener('click',e=>{const r=e.target.closest('.row');if(!r)return;select({id:r.dataset.id,kind:r.dataset.k});const x=entity(S.sel);if(x){const p=S.sel.kind==='track'?tpos(x):[x.lat,x.lon];if(X(p[1])<0||X(p[1])>W||Y(p[0])<0||Y(p[0])>H)centerOn(...p)}});
+function renderLog(){
+  const ev=S.st.events;const top=ev.length?ev[0].id+':'+ev.filter(e=>!e.ack).length:'';
+  if(top!==lastTopEvent){lastTopEvent=top;
+    $('logBody').innerHTML=ev.map(e=>`<div class="ev ${e.sev} ${e.ack?'':'unack'}" data-ref="${esc(e.ref||'')}"><span class="t">${clock(e.t)}</span><span class="s">${e.sev.toUpperCase()}</span><span>${esc(e.msg)}</span></div>`).join('')}
+  const n=ev.filter(e=>!e.ack).length;const p=$('alertPill');p.textContent=`${n} alert${n===1?'':'s'}`;p.className='alertpill'+(n?' hot':'');
+}
+$('logBody').addEventListener('click',e=>{const r=e.target.closest('.ev');if(!r||!r.dataset.ref)return;const id=r.dataset.ref,st=S.st;
+  const k=S.tracks.has(id)?'track':st.assets.some(a=>a.id===id)?'asset':st.sensors.some(s=>s.id===id)?'sensor':st.zones.some(z=>z.id===id)?'zone':null;
+  if(k){select({id,kind:k});const x=entity(S.sel);if(x&&id!=='NET'){const p=k==='track'?tpos(x):[x.lat,x.lon];centerOn(...p)}}});
+$('ackBtn').onclick=()=>api('/api/events/ack',{});
+function renderStats(){const st=S.st;
+  setT('clock',clock(nowS())+' EAT');setT('stTracks',String(st.tracks.filter(t=>t.status!=='lost').length));
+  setT('stLive',st.liveAdsb?String(st.tracks.filter(t=>!t.sim&&t.domain==='air'&&t.status!=='lost').length):'off');
+  setT('stSensors',`${st.sensors.filter(s=>s.on).length}/${st.sensors.length}`);setT('stDet',String(st.detPerMin));
+}
+document.querySelectorAll('#layers .chip').forEach(b=>b.onclick=()=>{S.layers[b.dataset.l]=!S.layers[b.dataset.l];b.classList.toggle('on');if(b.dataset.l==='raw'&&ws&&ws.readyState===1)ws.send(JSON.stringify({raw:S.layers.raw}))});
+document.querySelectorAll('#filters .chip').forEach(b=>b.onclick=()=>{S.filt[b.dataset.f]=!S.filt[b.dataset.f];b.classList.toggle('on');renderList()});
+
+let lastUI=0;
+function frame(now){if(W)draw();if(S.st&&now-lastUI>400){lastUI=now;renderStats();renderList();renderLog();refreshDetail()}requestAnimationFrame(frame)}
+renderDetail();requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
