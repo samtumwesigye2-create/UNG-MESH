@@ -28,7 +28,7 @@ def _from_readsb(ac_list):
         call = (a.get("flight") or "").strip() or hexid
         out.append(dict(lat=a["lat"], lon=a["lon"], alt=float(alt), domain="air", key="ICAO " + hexid, call=call,
                         label="Aircraft" + (f" ({a['t']})" if a.get("t") else ""), speed_kt=a.get("gs"),
-                        course_deg=a.get("track"), interval=10))
+                        course_deg=a.get("track"), interval=30))
     return out
 
 
@@ -46,7 +46,7 @@ def _from_opensky(states):
 
 
 class AdsbFeed:
-    def __init__(self, engine, preferred="adsb.lol", lat=0.15, lon=32.55, nm=150, every=10):
+    def __init__(self, engine, preferred="adsb.lol", lat=0.15, lon=32.55, nm=150, every=30):
         self.engine, self.lat, self.lon, self.nm, self.every = engine, lat, lon, nm, every
         order = ["adsb.lol", "airplanes.live", "opensky"]
         self.order = [preferred] + [o for o in order if o != preferred] if preferred in order else order
@@ -61,16 +61,23 @@ class AdsbFeed:
             r.raise_for_status()
             return _from_readsb(r.json().get("ac") or r.json().get("aircraft") or [])
         d = self.nm * 1.852 / 111.2
-        r = await client.get("https://opensky-network.org/api/states/all",
+        r = await client.get("https://opensky-network.org/api/states/all", timeout=25,
                              params=dict(lamin=self.lat - d, lamax=self.lat + d, lomin=self.lon - d, lomax=self.lon + d))
         r.raise_for_status()
         return _from_opensky(r.json().get("states"))
 
     async def run(self):
-        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "UNG-MESH/1.0"}) as client:
+        """Poll every `every` seconds. A source that refuses (rate limit, block) is
+        rested for a while instead of being hit again on every round."""
+        rest_until = {src: 0.0 for src in self.order}
+        fails = 0
+        async with httpx.AsyncClient(timeout=10, headers={"User-Agent": "UNG-MESH/1.0 (+sensor fusion demo)"}) as client:
             while True:
                 got = None
+                now = asyncio.get_event_loop().time()
                 for src in self.order:
+                    if now < rest_until[src]:
+                        continue
                     try:
                         got = await self.fetch(client, src)
                         if self.active != src:
@@ -80,13 +87,21 @@ class AdsbFeed:
                                 s["name"] = f"Live ADS-B network ({src})"
                         self.active = src
                         break
+                    except httpx.HTTPStatusError as e:
+                        code = e.response.status_code
+                        wait = float(e.response.headers.get("retry-after") or 0) or (600 if code == 403 else 180)
+                        rest_until[src] = now + wait
+                        log.warning("ADS-B source %s refused (%s), resting it %.0fs", src, code, wait)
                     except Exception as e:  # noqa: BLE001
-                        log.warning("ADS-B source %s failed: %s", src, e)
+                        rest_until[src] = now + 60
+                        log.warning("ADS-B source %s failed: %s", src, type(e).__name__)
                 if got is None:
+                    fails += 1
                     if self.active is not None:
                         self.engine.ev("warn", "Live ADS-B feed unreachable, retrying", "NET")
                     self.active = None
                 else:
+                    fails = 0
                     self.count = len(got)
                     self.engine.push("NET", got)
-                await asyncio.sleep(self.every)
+                await asyncio.sleep(self.every if fails == 0 else min(300, self.every * (1 + fails)))
