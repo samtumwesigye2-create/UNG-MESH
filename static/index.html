@@ -295,7 +295,7 @@ function draw(){
   if(S.layers.zones)for(const z of st.zones){const x=X(z.lon),y=Y(z.lat),r=kmPx(z.r);const hot=st.tracks.some(t=>t.zones.includes(z.id)&&t.aff==='suspect');
     ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fillStyle=hot?'rgba(255,77,94,.16)':'rgba(255,77,94,.06)';ctx.fill();ctx.setLineDash([6,4]);ctx.strokeStyle=S.sel&&S.sel.id===z.id?'#fff':'rgba(255,77,94,.7)';ctx.lineWidth=1.2;ctx.stroke();ctx.setLineDash([]);
     if(S.layers.labels&&r>12){ctx.fillStyle='rgba(255,120,130,.85)';ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='center';ctx.fillText(z.name.toUpperCase(),x,y-r-5)}}
-  for(const s of st.sensors){if(s.id==='NET')continue;const x=X(s.lon),y=Y(s.lat);ctx.fillStyle=s.on?(SCOL[s.type]||SCOL.other):'#ff4d5e';ctx.strokeStyle='#0a1017';
+  for(const s of st.sensors){if(s.id.endsWith('NET'))continue;const x=X(s.lon),y=Y(s.lat);ctx.fillStyle=s.on?(SCOL[s.type]||SCOL.other):'#ff4d5e';ctx.strokeStyle='#0a1017';
     ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x+5,y+4);ctx.lineTo(x-5,y+4);ctx.closePath();ctx.fill();ctx.stroke();
     if(S.sel&&S.sel.id===s.id){ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.strokeStyle='#fff';ctx.stroke()}
     if(S.layers.labels){ctx.fillStyle='rgba(200,210,220,.6)';ctx.font='10px "IBM Plex Mono",monospace';ctx.textAlign='left';ctx.fillText(s.id,x+7,y+4)}}
@@ -335,7 +335,7 @@ function clickAt(px,py){
   const consider=(id,kind,la,lo)=>{const d=Math.hypot(X(lo)-px,Y(la)-py);if(d<bd){bd=d;best={id,kind}}};
   if(S.filt.friendly)st.assets.forEach(a=>consider(a.id,'asset',a.lat,a.lon));
   st.tracks.forEach(t=>{if(visible(t))consider(t.id,'track',...tpos(t))});
-  st.sensors.forEach(s=>{if(s.id!=='NET')consider(s.id,'sensor',s.lat,s.lon)});
+  st.sensors.forEach(s=>{if(!s.id.endsWith('NET'))consider(s.id,'sensor',s.lat,s.lon)});
   if(!best){const[la,lo]=toLL(px,py);for(const z of st.zones)if(dist(la,lo,z.lat,z.lon)<z.r){best={id:z.id,kind:'zone'};break}}
   select(best);
 }
@@ -455,7 +455,7 @@ function renderLog(){
 }
 $('logBody').addEventListener('click',e=>{const r=e.target.closest('.ev');if(!r||!r.dataset.ref)return;const id=r.dataset.ref,st=S.st;
   const k=S.tracks.has(id)?'track':st.assets.some(a=>a.id===id)?'asset':st.sensors.some(s=>s.id===id)?'sensor':st.zones.some(z=>z.id===id)?'zone':null;
-  if(k){select({id,kind:k});const x=entity(S.sel);if(x&&id!=='NET'){const p=k==='track'?tpos(x):[x.lat,x.lon];centerOn(...p)}}});
+  if(k){select({id,kind:k});const x=entity(S.sel);if(x&&!id.endsWith('NET')){const p=k==='track'?tpos(x):[x.lat,x.lon];centerOn(...p)}}});
 $('ackBtn').onclick=()=>api('/api/events/ack',{});
 function renderStats(){const st=S.st;
   setT('clock',clock(nowS())+' EAT');setT('stTracks',String(st.tracks.filter(t=>t.status!=='lost').length));

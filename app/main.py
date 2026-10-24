@@ -23,6 +23,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response, WebSocket
 from fastapi.responses import FileResponse, JSONResponse
 
 from .adsb import AdsbFeed, _from_readsb
+from .ais import AisFeed
 from .engine import Engine
 from .nexus import NexusLink, check_token
 from .store import Store
@@ -46,6 +47,12 @@ store = Store(str(DATA / "mesh.db"))
 engine = Engine(store, live_adsb_name=None if ADSB == "off" else f"Live ADS-B network ({ADSB})", sim=SIM)
 feed = None if ADSB == "off" else AdsbFeed(engine, preferred=ADSB)
 link = NexusLink(engine)
+AIS_KEY = os.environ.get("AISSTREAM_API_KEY", "").strip()
+ais = None
+if AIS_KEY:
+    engine.register_sensor(dict(id="AIS-NET", name="Live AIS network (aisstream.io)", type="ais", lat=-1.0, lon=33.0, range=450))
+    engine.sensor("AIS-NET")["external"] = False
+    ais = AisFeed(engine, AIS_KEY)
 clients = {}
 
 
@@ -77,6 +84,8 @@ async def lifespan(app):
     tasks = [asyncio.create_task(tick_loop()), asyncio.create_task(link.run())]
     if feed:
         tasks.append(asyncio.create_task(feed.run()))
+    if ais:
+        tasks.append(asyncio.create_task(ais.run()))
     yield
     for t in tasks:
         t.cancel()
@@ -138,7 +147,8 @@ async def index():
 @app.get("/health")
 async def health():
     return {"ok": True, "tracks": len(engine.tracks), "adsb": feed.active if feed else "off",
-            "adsbAircraft": feed.count if feed else 0, "sim": SIM, "nexus": link.status()}
+            "adsbAircraft": feed.count if feed else 0, "sim": SIM, "nexus": link.status(),
+            "ais": None if not ais else {"connected": ais.connected, "messages": ais.count, "vessels": len(ais.vessels)}}
 
 
 # ---------- state + live updates ----------
