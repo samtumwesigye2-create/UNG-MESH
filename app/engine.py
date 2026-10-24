@@ -520,11 +520,13 @@ class Engine:
                     continue  # give transponder feeds a few seconds to name the contact first
                 if inside and z["id"] not in tr["zones"]:
                     tr["zones"].add(z["id"])
-                    if tr["aff"] in ("unknown", "suspect"):
+                    last = tr.setdefault("zoneAlerted", {}).get(z["id"], 0)
+                    if tr["aff"] in ("unknown", "suspect") and self.now - last > 300:
+                        tr["zoneAlerted"][z["id"]] = self.now
                         if tr["affSrc"] == "auto" and tr["aff"] == "unknown":
                             tr["aff"] = "suspect"
                         self.ev("crit", f"{tr['id']} ({tr['label']}) entered {z['name']}", tr["id"])
-                elif not inside and z["id"] in tr["zones"]:
+                elif z["id"] in tr["zones"] and dist(tr["lat"], tr["lon"], z["lat"], z["lon"]) > z["r"] + 0.3:
                     tr["zones"].discard(z["id"])
 
     def add_zone(self, name, lat, lon, r, dom):
