@@ -28,8 +28,8 @@ def parse(msg):
         return None
     body = (msg.get("Message") or {}).get(mtype) or {}
     meta = msg.get("MetaData") or {}
-    lat = body.get("Latitude", meta.get("latitude"))
-    lon = body.get("Longitude", meta.get("longitude"))
+    lat = body.get("Latitude", meta.get("latitude", meta.get("Latitude")))
+    lon = body.get("Longitude", meta.get("longitude", meta.get("Longitude")))
     if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
         return None
     mmsi = str(meta.get("MMSI") or body.get("UserID") or "").strip()
