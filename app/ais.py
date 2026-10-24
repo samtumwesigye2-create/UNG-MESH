@@ -64,6 +64,8 @@ class AisFeed:
                         self.engine.ev("info", "Live AIS feed connected (aisstream.io, Lake Victoria)", "AIS-NET")
                     self.connected = True
                     backoff = 5
+                    log.info("AIS connected, listening for Lake Victoria vessels")
+                    last_report = asyncio.get_event_loop().time()
                     async for raw in ws:
                         try:
                             msg = json.loads(raw)
@@ -74,6 +76,10 @@ class AisFeed:
                             self.engine.ev("warn", f"AIS feed refused: {msg['error']}", "AIS-NET")
                             await asyncio.sleep(300)
                             break
+                        now = asyncio.get_event_loop().time()
+                        if now - last_report > 600:
+                            last_report = now
+                            log.info("AIS status: %d messages, %d vessels so far", self.count, len(self.vessels))
                         det = parse(msg)
                         if det:
                             self.count += 1
