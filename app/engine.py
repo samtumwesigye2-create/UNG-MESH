@@ -516,6 +516,8 @@ class Engine:
                 if tr["domain"] not in z["dom"]:
                     continue
                 inside = dist(tr["lat"], tr["lon"], z["lat"], z["lon"]) < z["r"]
+                if inside and z["id"] not in tr["zones"] and not tr["call"] and self.now - tr["first"] < 4:
+                    continue  # give transponder feeds a few seconds to name the contact first
                 if inside and z["id"] not in tr["zones"]:
                     tr["zones"].add(z["id"])
                     if tr["aff"] in ("unknown", "suspect"):

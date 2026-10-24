@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .adsb import AdsbFeed, _from_readsb
 from .engine import Engine
+from .nexus import NexusLink, check_token
 from .store import Store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -44,6 +45,7 @@ STATIC = Path(__file__).resolve().parent.parent / "static"
 store = Store(str(DATA / "mesh.db"))
 engine = Engine(store, live_adsb_name=None if ADSB == "off" else f"Live ADS-B network ({ADSB})", sim=SIM)
 feed = None if ADSB == "off" else AdsbFeed(engine, preferred=ADSB)
+link = NexusLink(engine)
 clients = {}
 
 
@@ -51,8 +53,9 @@ async def tick_loop():
     while True:
         try:
             engine.tick()
+            link.collect_events()
             if clients:
-                base = engine.snapshot(include_raw=False)
+                base = dict(engine.snapshot(include_raw=False), nexus=link.status())
                 raw = None
                 for ws, want_raw in list(clients.items()):
                     msg = base
@@ -71,7 +74,7 @@ async def tick_loop():
 
 @asynccontextmanager
 async def lifespan(app):
-    tasks = [asyncio.create_task(tick_loop())]
+    tasks = [asyncio.create_task(tick_loop()), asyncio.create_task(link.run())]
     if feed:
         tasks.append(asyncio.create_task(feed.run()))
     yield
@@ -135,14 +138,14 @@ async def index():
 @app.get("/health")
 async def health():
     return {"ok": True, "tracks": len(engine.tracks), "adsb": feed.active if feed else "off",
-            "adsbAircraft": feed.count if feed else 0, "sim": SIM}
+            "adsbAircraft": feed.count if feed else 0, "sim": SIM, "nexus": link.status()}
 
 
 # ---------- state + live updates ----------
 @app.get("/api/state")
 async def state(request: Request, raw: bool = False):
     require(request)
-    return JSONResponse(engine.snapshot(include_raw=raw))
+    return JSONResponse(dict(engine.snapshot(include_raw=raw), nexus=link.status()))
 
 
 @app.websocket("/ws")
@@ -245,3 +248,24 @@ async def ingest_aircraft(request: Request, sensor_id: str, lat: float, lon: flo
     for it in items:
         it["interval"] = 2
     return {"accepted": engine.push(sensor_id, items)}
+
+
+# ---------- UNG-NEXUS ----------
+@app.get("/v1/system")
+async def system_info():
+    return {"system_id": "UNG-MESH", "domain": "sensor-fusion-common-operating-picture",
+            "capabilities": ["sensor-fusion", "live-adsb", "restricted-zones", "alerts", "asset-tasking",
+                             "nexus-inbound", "nexus-alert-reporting"],
+            "inbound_message_types": ["system.health", "mesh.detections", "mesh.zone.create", "mesh.tracks.query"]}
+
+
+@app.post("/v1/nexus/inbound")
+async def nexus_inbound(request: Request, authorization: str | None = Header(default=None)):
+    principal = await asyncio.to_thread(check_token, authorization)
+    if not principal:
+        raise HTTPException(401, "UNG-MESH service token or JANUS service token required")
+    env = await request.json()
+    out = link.handle_inbound(env)
+    if not out.get("accepted"):
+        return JSONResponse(out, status_code=400)
+    return out

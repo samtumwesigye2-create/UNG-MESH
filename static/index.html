@@ -141,6 +141,7 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
     <span>Live aircraft <b id="stLive">0</b></span>
     <span>Sensors <b id="stSensors">0</b></span>
     <span>Detections/min <b id="stDet">0</b></span>
+    <span title="Link to the UNG-NEXUS hub">NEXUS <b id="stNexus">–</b></span>
   </div>
   <div class="spacer"></div>
   <span class="alertpill" id="alertPill">0 alerts</span>
@@ -460,6 +461,7 @@ function renderStats(){const st=S.st;
   setT('clock',clock(nowS())+' EAT');setT('stTracks',String(st.tracks.filter(t=>t.status!=='lost').length));
   setT('stLive',st.liveAdsb?String(st.tracks.filter(t=>!t.sim&&t.domain==='air'&&t.status!=='lost').length):'off');
   setT('stSensors',`${st.sensors.filter(s=>s.on).length}/${st.sensors.length}`);setT('stDet',String(st.detPerMin));
+  const nx=st.nexus;setT('stNexus',!nx||!nx.configured?'off':nx.lastOk?`linked · ${nx.sent} sent`:(nx.lastError?'error: '+nx.lastError:'connecting'));
 }
 document.querySelectorAll('#layers .chip').forEach(b=>b.onclick=()=>{S.layers[b.dataset.l]=!S.layers[b.dataset.l];b.classList.toggle('on');if(b.dataset.l==='raw'&&ws&&ws.readyState===1)ws.send(JSON.stringify({raw:S.layers.raw}))});
 document.querySelectorAll('#filters .chip').forEach(b=>b.onclick=()=>{S.filt[b.dataset.f]=!S.filt[b.dataset.f];b.classList.toggle('on');renderList()});
