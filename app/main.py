@@ -28,6 +28,7 @@ from .store import Store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("mesh")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 PASSWORD = os.environ.get("OPERATOR_PASSWORD") or ""
 if not PASSWORD:
