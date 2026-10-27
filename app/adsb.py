@@ -89,7 +89,7 @@ class AdsbFeed:
                         break
                     except httpx.HTTPStatusError as e:
                         code = e.response.status_code
-                        wait = float(e.response.headers.get("retry-after") or 0) or (600 if code == 403 else 180)
+                        wait = float(e.response.headers.get("retry-after") or 0) or (3600 if code in (403, 429) else 300)
                         rest_until[src] = now + wait
                         log.warning("ADS-B source %s refused (%s), resting it %.0fs", src, code, wait)
                     except Exception as e:  # noqa: BLE001

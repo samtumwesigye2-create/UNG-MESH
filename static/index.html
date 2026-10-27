@@ -153,6 +153,7 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
     <div class="sec">
       <p class="h">Map layers</p>
       <div class="chips" id="layers">
+        <button class="chip on" data-l="basemap">Real map</button>
         <button class="chip on" data-l="coverage">Sensor coverage</button>
         <button class="chip on" data-l="zones">Zones</button>
         <button class="chip on" data-l="trails">Trails</button>
@@ -213,7 +214,7 @@ const PLACES=[["Kampala",0.3476,32.5825],["Entebbe",0.064,32.462],["Port Bell",0
  ["Jinja",0.4244,33.2042],["Mukono",0.3533,32.7553],["Mpigi",0.225,32.3136],["Masaka",-0.3333,31.7333],["Mityana",0.4175,32.0228],["Luweero",0.8492,32.4731],["Mbale",1.0806,34.175],["Gulu",2.7724,32.2881],["Mbarara",-0.6072,30.6545],["Fort Portal",0.671,30.275],["Lira",2.2499,32.8999]];
 const AIRPORT=[0.0424,32.4435];
 const S={st:null,tracks:new Map(),offset:0,sel:null,placing:false,
- layers:{coverage:true,zones:true,trails:true,raw:false,labels:true},filt:{suspect:true,unknown:true,neutral:true,friendly:true,sim:true}};
+ layers:{basemap:true,coverage:true,zones:true,trails:true,raw:false,labels:true},filt:{suspect:true,unknown:true,neutral:true,friendly:true,sim:true}};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nowS=()=>Date.now()/1000-S.offset;
@@ -278,17 +279,40 @@ const visible=t=>S.filt[t.aff]&&(S.filt.sim||!t.sim);
 const spd=t=>Math.hypot(t.vlat,t.vlon)*KM*3600/1.852;
 const crs=t=>(Math.atan2(t.vlon,t.vlat)*180/Math.PI+360)%360;
 function tpos(t){const dt=Math.min(30,Math.max(0,nowS()-t.last));return[t.lat+t.vlat*dt,t.lon+t.vlon*dt]}
+// Real map: CARTO dark basemap tiles (OpenStreetMap data). Near the equator Web Mercator is
+// almost identical to this map's flat lat/lon grid, so each tile is placed by its exact corners.
+const TILE_CACHE=new Map();
+function tileImg(z,x,y){const k=z+'/'+x+'/'+y;let im=TILE_CACHE.get(k);
+  if(!im){im=new Image();im.crossOrigin='anonymous';im.src=`https://${'abcd'[(x+y)%4]}.basemaps.cartocdn.com/dark_all/${k}.png`;TILE_CACHE.set(k,im);
+    if(TILE_CACHE.size>600){const first=TILE_CACHE.keys().next().value;TILE_CACHE.delete(first)}}
+  return im}
+const t2lon=(x,z)=>x/2**z*360-180, t2lat=(y,z)=>Math.atan(Math.sinh(Math.PI*(1-2*y/2**z)))*180/Math.PI;
+const lat2t=(la,z)=>{const r=la*Math.PI/180;return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*2**z};
+function drawTiles(){
+  const z=Math.max(2,Math.min(18,Math.round(Math.log2(V.scale*360/256))));const n=2**z;
+  const lo0=V.lon-W/2/V.scale,lo1=V.lon+W/2/V.scale,la1=V.lat+H/2/V.scale,la0=V.lat-H/2/V.scale;
+  const x0=Math.max(0,Math.floor((lo0+180)/360*n)),x1=Math.min(n-1,Math.floor((lo1+180)/360*n));
+  const y0=Math.max(0,Math.floor(lat2t(Math.min(85,la1),z))),y1=Math.min(n-1,Math.floor(lat2t(Math.max(-85,la0),z)));
+  if((x1-x0+1)*(y1-y0+1)>120)return false;
+  ctx.save();ctx.imageSmoothingEnabled=true;
+  for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){const im=tileImg(z,x,y);if(!im.complete||!im.naturalWidth)continue;
+    const L=X(t2lon(x,z)),R=X(t2lon(x+1,z)),T=Y(t2lat(y,z)),Bm=Y(t2lat(y+1,z));ctx.drawImage(im,L,T,R-L+0.5,Bm-T+0.5)}
+  ctx.restore();
+  ctx.fillStyle='rgba(10,16,23,.55)';ctx.font='10px "IBM Plex Sans",sans-serif';ctx.textAlign='right';
+  const at='© OpenStreetMap contributors © CARTO';const w=ctx.measureText(at).width+10;ctx.fillRect(W-w,H-16,w,16);ctx.fillStyle='rgba(200,210,220,.8)';ctx.fillText(at,W-5,H-5);
+  return true}
 function draw(){
   ctx.setTransform(DPR,0,0,DPR,0,0);ctx.textBaseline='alphabetic';
   ctx.fillStyle='#101a17';ctx.fillRect(0,0,W,H);
-  poly(LAKE,true);ctx.fillStyle='#0b1827';ctx.fill();ctx.strokeStyle='#1d3a52';ctx.lineWidth=1;ctx.stroke();
+  const tiles=S.layers.basemap&&drawTiles();
+  if(!tiles){poly(LAKE,true);ctx.fillStyle='#0b1827';ctx.fill();ctx.strokeStyle='#1d3a52';ctx.lineWidth=1;ctx.stroke();}
   const steps=[0.01,0.025,0.05,0.1,0.25,0.5,1];const step=steps.find(s=>s*V.scale>90)||1;
   ctx.strokeStyle='rgba(125,145,165,.10)';ctx.fillStyle='rgba(160,180,200,.45)';ctx.font='10px "IBM Plex Mono",monospace';
   for(let la=Math.ceil((V.lat-H/2/V.scale)/step)*step;la<V.lat+H/2/V.scale;la+=step){const y=Y(la);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();ctx.textAlign='left';ctx.fillText(`${Math.abs(la).toFixed(2)}°${la>=0?'N':'S'}`,4,y-3)}
   for(let lo=Math.ceil((V.lon-W/2/V.scale)/step)*step;lo<V.lon+W/2/V.scale;lo+=step){const x=X(lo);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();ctx.textAlign='center';ctx.fillText(`${lo.toFixed(2)}°E`,x,H-6)}
-  poly(ROAD);ctx.strokeStyle='rgba(200,180,140,.25)';ctx.lineWidth=2;ctx.stroke();
+  if(!tiles){poly(ROAD);ctx.strokeStyle='rgba(200,180,140,.25)';ctx.lineWidth=2;ctx.stroke();}
   ctx.font='600 12px "Barlow Condensed",sans-serif';ctx.textAlign='center';
-  for(const[n,la,lo]of PLACES){const big=PLACES.indexOf(PLACES.find(p=>p[0]===n))>6;if(big&&V.scale>1200)continue;ctx.fillStyle=n.includes('Lake')||n.includes('Bay')?'rgba(90,140,190,.6)':'rgba(190,200,210,.45)';ctx.fillText(n.toUpperCase(),X(lo),Y(la)-10);if(big){ctx.fillRect(X(lo)-1.5,Y(la)-1.5,3,3)}}
+  if(!tiles)for(const[n,la,lo]of PLACES){const big=PLACES.indexOf(PLACES.find(p=>p[0]===n))>6;if(big&&V.scale>1200)continue;ctx.fillStyle=n.includes('Lake')||n.includes('Bay')?'rgba(90,140,190,.6)':'rgba(190,200,210,.45)';ctx.fillText(n.toUpperCase(),X(lo),Y(la)-10);if(big){ctx.fillRect(X(lo)-1.5,Y(la)-1.5,3,3)}}
   ctx.fillStyle='rgba(190,200,210,.5)';ctx.font='10px "IBM Plex Mono",monospace';ctx.fillText('HUEN 17/35',X(AIRPORT[1]),Y(AIRPORT[0])+16);
   const st=S.st;if(!st)return;
   if(S.layers.coverage)for(const s of st.sensors){if(s.range>100)continue;ctx.beginPath();ctx.arc(X(s.lon),Y(s.lat),kmPx(s.range),0,7);ctx.strokeStyle=s.on?'rgba(159,182,204,.16)':'rgba(255,77,94,.15)';ctx.setLineDash([3,5]);ctx.stroke();ctx.setLineDash([])}
