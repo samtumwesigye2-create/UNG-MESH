@@ -142,6 +142,9 @@ class Engine:
             for z in self.zones:
                 store.save_zone(z)
         self.events = store.recent_events(150)
+        self.recs = []
+        self.next_rec = 1
+        self.auto_dispatch = store.get_meta('auto_dispatch') == '1'
         self.ev("info", f"UNG-MESH started: {len(self.sensors)} sensors, {len(self.assets)} assets"
                 + (", live ADS-B on" if self.live_adsb else ""))
         self.assets[0]["task"] = {"type": "patrol", "target": self.zones[0]["id"]}
@@ -526,6 +529,7 @@ class Engine:
                         if tr["affSrc"] == "auto" and tr["aff"] == "unknown":
                             tr["aff"] = "suspect"
                         self.ev("crit", f"{tr['id']} ({tr['label']}) entered {z['name']}", tr["id"])
+                        self._recommend(tr, f"entered {z['name']}")
                 elif z["id"] in tr["zones"] and dist(tr["lat"], tr["lon"], z["lat"], z["lon"]) > z["r"] + 0.3:
                     tr["zones"].discard(z["id"])
 
@@ -635,6 +639,75 @@ class Engine:
         return None
 
     # ---------- main tick ----------
+    # ---------- recommended actions (human approves) ----------
+    def _can_reach(self, a, tr):
+        if a["domain"] == "air":
+            return True
+        if a["domain"] == "surface":
+            return tr["domain"] == "surface"
+        return tr["domain"] in ("ground", "air") and not in_lake(tr["lat"], tr["lon"])
+
+    def _available(self, a):
+        if a["batt"] is not None and a["batt"] < 40:
+            return False
+        return a["task"]["type"] in ("idle", "patrol")
+
+    def _recommend(self, tr, reason):
+        if any(r["track"] == tr["id"] and r["status"] == "pending" for r in self.recs):
+            return
+        if any(a["task"]["type"] == "investigate" and a["task"].get("target") == tr["id"] for a in self.assets):
+            return
+        options = []
+        for a in self.assets:
+            if self._can_reach(a, tr) and self._available(a):
+                d = dist(a["lat"], a["lon"], tr["lat"], tr["lon"])
+                options.append((d / kms(a["spd"]), a))
+        if not options:
+            self.ev("warn", f"No free asset can reach {tr['id']}", tr["id"])
+            return
+        eta, a = min(options, key=lambda x: x[0])
+        r = dict(id=f"R{self.next_rec}", t=self.now, track=tr["id"], asset=a["id"], eta=round(eta),
+                 reason=f"{tr['id']} ({tr['label']}) {reason}", status="pending")
+        self.next_rec += 1
+        self.recs.insert(0, r)
+        del self.recs[30:]
+        if self.auto_dispatch:
+            self.decide(r["id"], True, by="Auto-dispatch")
+        else:
+            self.ev("warn", f"Recommended: send {a['id']} to investigate {tr['id']} (ETA {int(eta // 60)}:{int(eta % 60):02d})", tr["id"])
+
+    def decide(self, rid, approve, by="Operator"):
+        r = next((r for r in self.recs if r["id"] == rid), None)
+        if not r or r["status"] != "pending":
+            return "That recommendation is no longer open"
+        if not approve:
+            r["status"] = "dismissed"
+            self.ev("info", f"{by} dismissed recommendation to send {r['asset']} to {r['track']}", r["track"])
+            return None
+        if r["track"] not in self.tracks:
+            r["status"] = "expired"
+            return "The contact is gone"
+        a = next(a for a in self.assets if a["id"] == r["asset"])
+        a["task"] = {"type": "investigate", "target": r["track"]}
+        r["status"] = "approved"
+        self.ev("info", f"{by} approved: {a['id']} sent to investigate {r['track']}", r["track"])
+        return None
+
+    def set_auto_dispatch(self, on):
+        self.auto_dispatch = bool(on)
+        self.store.set_meta("auto_dispatch", "1" if on else "0")
+        self.ev("warn" if on else "info", f"Operator turned auto-dispatch {'on' if on else 'off'}", None)
+
+    def _expire_recs(self):
+        for r in self.recs:
+            if r["status"] != "pending":
+                continue
+            tr = self.tracks.get(r["track"])
+            if not tr or tr["status"] == "lost" or self.now - r["t"] > 180:
+                r["status"] = "expired"
+            elif not self._available(next(a for a in self.assets if a["id"] == r["asset"])):
+                r["status"] = "expired"
+
     def tick(self):
         prev = self.now
         self.now = time.time()
@@ -652,6 +725,7 @@ class Engine:
         self.pending = []
         self._fuse(dets)
         self._zone_check()
+        self._expire_recs()
         if self.sim and random.random() < dt / 5:
             c = lambda k: sum(1 for o in self.truths.values() if o["kind"] == k)
             if not self.live_adsb:
@@ -690,7 +764,7 @@ class Engine:
                         noise=s["noise"], on=s["on"], sim=s["sim"], external=s["external"], hits=len(s["hits"]),
                         lastSeen=s["last_seen"]) for s in self.sensors]
         out = dict(now=now, tracks=tracks, assets=assets, sensors=sensors, zones=self.zones,
-                   events=self.events[:120], detPerMin=len(self.det_log), liveAdsb=self.live_adsb, sim=self.sim)
+                   events=self.events[:120], recs=self.recs[:12], autoDispatch=self.auto_dispatch, detPerMin=len(self.det_log), liveAdsb=self.live_adsb, sim=self.sim)
         if include_raw:
             out["raw"] = [dict(lat=round(r["lat"], 5), lon=round(r["lon"], 5), type=r["type"], t=r["t"]) for r in self.raw[-400:]]
         return out

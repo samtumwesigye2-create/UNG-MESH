@@ -97,3 +97,13 @@ class Store:
         with self.lock:
             self.db.execute("DELETE FROM snaps WHERE t<?", (before,))
             self.db.commit()
+
+    def get_meta(self, k):
+        with self.lock:
+            r = self.db.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
+        return r[0] if r else None
+
+    def set_meta(self, k, v):
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)", (k, v))
+            self.db.commit()

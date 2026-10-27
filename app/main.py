@@ -317,3 +317,23 @@ async def history(request: Request, t: float):
     if not snap:
         raise HTTPException(404, "No recorded history yet")
     return snap
+
+
+# ---------- recommended actions ----------
+@app.post("/api/recs/{rid}/approve")
+async def rec_approve(rid: str, request: Request):
+    require(request)
+    return _ok(engine.decide(rid, True))
+
+
+@app.post("/api/recs/{rid}/dismiss")
+async def rec_dismiss(rid: str, request: Request):
+    require(request)
+    return _ok(engine.decide(rid, False))
+
+
+@app.post("/api/settings/auto-dispatch")
+async def auto_dispatch(request: Request):
+    require(request)
+    engine.set_auto_dispatch(bool((await request.json()).get("on")))
+    return {"ok": True, "on": engine.auto_dispatch}

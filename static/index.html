@@ -122,6 +122,14 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
 .replay .rt{font-family:var(--f-mono);font-size:12px;color:var(--accent);min-width:120px}
 .replaying .mapwrap{box-shadow:inset 0 0 0 2px var(--accent)}
 .replaytag{position:absolute;left:12px;top:12px;background:var(--accent);color:#1a1205;font-weight:700;font-size:11px;letter-spacing:.12em;padding:4px 8px;border-radius:3px}
+.recs{border-bottom:1px solid var(--line);padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.recs .rh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.recs .auto{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:5px;cursor:pointer}
+.rec{border:1px solid var(--accent);border-radius:5px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(230,162,60,.07)}
+.rec .what{font-size:13px;line-height:1.4}
+.rec .why{font-size:11px;color:var(--dim)}
+.rec .line{display:flex;gap:6px}
+.recnone{font-size:12px;color:var(--dim)}
 .toast{position:fixed;right:16px;bottom:16px;background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:4px;z-index:40}
 </style>
 
@@ -210,6 +218,11 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
   </section>
 
   <aside class="right">
+    <div class="recs" id="recs">
+      <div class="rh"><span class="h" style="margin:0">Recommended actions</span>
+        <label class="auto" for="autoD"><input type="checkbox" id="autoD"> Auto-dispatch</label></div>
+      <div id="recList"></div>
+    </div>
     <div class="detail" id="detail"></div>
   </aside>
 </main>
@@ -531,8 +544,25 @@ $('rPlay').onclick=()=>{if(!S.replay)return;S.replay.playing=!S.replay.playing;$
 setInterval(()=>{const r=S.replay;if(!r||!r.playing)return;const sl=$('rSlider');const nt=Math.min(+sl.max,r.t+30);sl.value=nt;
   if(nt>=+sl.max){r.playing=false;$('rPlay').textContent='Play'}loadReplay(nt)},500);
 
+// ---------- recommended actions ----------
+let recKey='';
+function renderRecs(){
+  const st=S.st;if(!st||!st.recs)return;
+  const ad=$('autoD');if(document.activeElement!==ad)ad.checked=!!st.autoDispatch;
+  const pend=st.recs.filter(r=>r.status==='pending');
+  const key=pend.map(r=>r.id).join(',')+'|'+(S.replay?1:0)+'|'+(st.autoDispatch?1:0);if(key===recKey)return;recKey=key;
+  $('recList').innerHTML=pend.length?pend.map(r=>`<div class="rec"><div class="what">Send <b>${esc(r.asset)}</b> to investigate <b>${esc(r.track)}</b> · ETA ${Math.floor(r.eta/60)}:${String(r.eta%60).padStart(2,'0')}</div>
+    <div class="why">${esc(r.reason)}</div><div class="line"><button class="btn primary" data-ok="${r.id}">Approve</button><button class="btn" data-no="${r.id}">Dismiss</button><button class="btn" data-see="${esc(r.track)}">Show</button></div></div>`).join('')
+    :`<div class="recnone">${st.autoDispatch?'Auto-dispatch is on: the nearest free asset is sent automatically when a contact enters a zone.':'Nothing waiting. When a contact enters a zone, the best asset to check it appears here for you to approve.'}</div>`;
+}
+$('recList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.ok)api(`/api/recs/${b.dataset.ok}/approve`,{}).then(()=>toast('Asset sent'));
+  if(b.dataset.no)api(`/api/recs/${b.dataset.no}/dismiss`,{}).then(()=>toast('Dismissed'));
+  if(b.dataset.see){select({id:b.dataset.see,kind:'track'});const x=entity(S.sel);if(x)centerOn(...tpos(x))}});
+$('autoD').addEventListener('change',e=>{const on=e.target.checked;api('/api/settings/auto-dispatch',{on}).then(()=>toast(on?'Auto-dispatch on':'Auto-dispatch off')).catch(()=>{e.target.checked=!on})});
+
 let lastUI=0;
-function frame(now){if(W)draw();if(S.st&&now-lastUI>400){lastUI=now;renderStats();renderList();renderLog();refreshDetail()}requestAnimationFrame(frame)}
+function frame(now){if(W)draw();if(S.st&&now-lastUI>400){lastUI=now;renderStats();renderList();renderLog();renderRecs();refreshDetail()}requestAnimationFrame(frame)}
 renderDetail();requestAnimationFrame(frame);
 })();
 </script>
