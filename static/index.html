@@ -117,6 +117,11 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
 .login .err{color:var(--crit);font-size:12px;min-height:16px}
 .placing canvas{cursor:copy}
 .banner{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--accent);color:#1a1205;font-weight:600;padding:6px 12px;border-radius:4px;font-size:12px}
+.replay{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);width:min(560px,calc(100% - 24px));background:rgba(15,23,32,.94);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.replay input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+.replay .rt{font-family:var(--f-mono);font-size:12px;color:var(--accent);min-width:120px}
+.replaying .mapwrap{box-shadow:inset 0 0 0 2px var(--accent)}
+.replaytag{position:absolute;left:12px;top:12px;background:var(--accent);color:#1a1205;font-weight:700;font-size:11px;letter-spacing:.12em;padding:4px 8px;border-radius:3px}
 .toast{position:fixed;right:16px;bottom:16px;background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:4px;z-index:40}
 </style>
 
@@ -179,12 +184,20 @@ dl.kv dd{margin:0;font-family:var(--f-mono);font-size:12px;text-align:right;font
   <section class="center">
     <div class="mapwrap" id="mapwrap">
       <canvas id="map" aria-label="Live map with fused tracks"></canvas>
+      <div class="replaytag" id="replayTag" hidden>REPLAY</div>
+      <div class="replay" id="replayBar" hidden>
+        <button class="btn" id="rPlay">Play</button>
+        <input type="range" id="rSlider" min="0" max="1" step="1" value="1" aria-label="Replay time">
+        <span class="rt" id="rTime">--</span>
+        <button class="btn primary" id="rLive">Back to live</button>
+      </div>
       <div class="banner" id="placeBanner" hidden>Click the map to place the zone centre · Esc to cancel</div>
       <div class="zoom">
         <button class="btn" id="zin" aria-label="Zoom in">+</button>
         <button class="btn" id="zout" aria-label="Zoom out">−</button>
         <button class="btn" id="zfit" aria-label="Reset view">⌂</button>
         <button class="btn" id="zwide" aria-label="Show all of Uganda" title="Wide view">◎</button>
+        <button class="btn" id="replayBtn" aria-label="Replay the last 24 hours" title="Replay">⟲</button>
       </div>
       <div class="legend">
         <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#4fa3ff"/></svg>Friendly</span>
@@ -221,6 +234,7 @@ const nowS=()=>Date.now()/1000-S.offset;
 function clock(t){return new Date(t*1000+3*3600e3).toISOString().substr(11,8)}
 function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3500)}
 async function api(path,body,method){
+  if(S.replay&&(body||method)&&!path.startsWith('/api/history')){toast('Return to live before giving orders');return new Promise(()=>{})}
   const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
   if(r.status===401){showLogin();throw new Error('Sign in first')}
   const j=await r.json().catch(()=>({}));if(!r.ok){toast(j.detail||'Request failed');throw new Error(j.detail)}return j;
@@ -245,6 +259,7 @@ fetch('/api/me',{credentials:'same-origin'}).then(r=>r.ok?connect():showLogin())
 
 let lastTopEvent=null,firstState=true;
 function onState(st){
+  S.live=st;if(S.replay)return;
   S.st=st;S.offset=Date.now()/1000-st.now;
   S.tracks=new Map(st.tracks.map(t=>[t.id,t]));
   if(S.sel&&S.sel.kind!=='newzone'&&!entity(S.sel)&&!S.sel.pending){S.sel=null}
@@ -489,6 +504,32 @@ function renderStats(){const st=S.st;
 }
 document.querySelectorAll('#layers .chip').forEach(b=>b.onclick=()=>{S.layers[b.dataset.l]=!S.layers[b.dataset.l];b.classList.toggle('on');if(b.dataset.l==='raw'&&ws&&ws.readyState===1)ws.send(JSON.stringify({raw:S.layers.raw}))});
 document.querySelectorAll('#filters .chip').forEach(b=>b.onclick=()=>{S.filt[b.dataset.f]=!S.filt[b.dataset.f];b.classList.toggle('on');renderList()});
+
+// ---------- replay ----------
+let rFetch=0;
+async function openReplay(){
+  const r=await api('/api/history/range');
+  if(!r.count){toast('Nothing recorded yet. Recording starts when the server runs; check back in a minute.');return}
+  S.replay={start:r.start,end:r.end,t:r.end,playing:false};
+  const sl=$('rSlider');sl.min=Math.floor(r.start);sl.max=Math.ceil(r.end);sl.value=sl.max;
+  $('replayBar').hidden=false;$('replayTag').hidden=false;document.querySelector('.app').classList.add('replaying');
+  await loadReplay(r.end);
+}
+async function loadReplay(t){
+  const my=++rFetch;const snap=await api('/api/history?t='+t);if(my!==rFetch||!S.replay)return;
+  const live=S.live||S.st;
+  S.st=Object.assign({},live,{tracks:snap.tracks,assets:snap.assets,now:snap.t,raw:[]});
+  S.tracks=new Map(snap.tracks.map(x=>[x.id,x]));S.offset=Date.now()/1000-snap.t;S.replay.t=snap.t;
+  setT('rTime',new Date(snap.t*1000+3*3600e3).toISOString().substr(5,14).replace('T',' ')+' EAT');
+  renderList();renderDetail();
+}
+function closeReplay(){S.replay=null;$('replayBar').hidden=true;$('replayTag').hidden=true;document.querySelector('.app').classList.remove('replaying');$('rPlay').textContent='Play';if(S.live)onState(S.live);renderDetail()}
+$('replayBtn').onclick=()=>S.replay?closeReplay():openReplay();
+$('rLive').onclick=closeReplay;
+$('rSlider').addEventListener('input',e=>{if(S.replay){S.replay.playing=false;$('rPlay').textContent='Play';loadReplay(+e.target.value)}});
+$('rPlay').onclick=()=>{if(!S.replay)return;S.replay.playing=!S.replay.playing;$('rPlay').textContent=S.replay.playing?'Pause':'Play'};
+setInterval(()=>{const r=S.replay;if(!r||!r.playing)return;const sl=$('rSlider');const nt=Math.min(+sl.max,r.t+30);sl.value=nt;
+  if(nt>=+sl.max){r.playing=false;$('rPlay').textContent='Play'}loadReplay(nt)},500);
 
 let lastUI=0;
 function frame(now){if(W)draw();if(S.st&&now-lastUI>400){lastUI=now;renderStats();renderList();renderLog();refreshDetail()}requestAnimationFrame(frame)}

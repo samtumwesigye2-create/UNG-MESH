@@ -56,11 +56,33 @@ if AIS_KEY:
 clients = {}
 
 
+SNAP_EVERY = 15
+KEEP_HOURS = 24
+last_snap = [0.0, 0.0]
+
+
+def save_snapshot():
+    """Store a compact copy of the picture for replay; drop anything older than KEEP_HOURS."""
+    snap = engine.snapshot()
+    tracks = [{k: t[k] for k in ("id", "domain", "lat", "lon", "vlat", "vlon", "alt", "call", "aff", "affSrc",
+                                 "label", "first", "last", "status", "zones", "identified", "sim", "conf", "src")}
+              | {"hist": t["hist"][-10:]} for t in snap["tracks"] if t["status"] != "lost"]
+    assets = [{k: a[k] for k in ("id", "name", "domain", "home", "homeName", "spd", "eo", "batt", "lat", "lon", "task", "sim")}
+              | {"trail": a["trail"][-6:]} for a in snap["assets"]]
+    store.add_snapshot(engine.now, {"tracks": tracks, "assets": assets})
+    if engine.now - last_snap[1] > 3600:
+        last_snap[1] = engine.now
+        store.prune_snapshots(engine.now - KEEP_HOURS * 3600)
+
+
 async def tick_loop():
     while True:
         try:
             engine.tick()
             link.collect_events()
+            if engine.now - last_snap[0] >= SNAP_EVERY:
+                last_snap[0] = engine.now
+                await asyncio.to_thread(save_snapshot)
             if clients:
                 base = dict(engine.snapshot(include_raw=False), nexus=link.status())
                 raw = None
@@ -279,3 +301,19 @@ async def nexus_inbound(request: Request, authorization: str | None = Header(def
     if not out.get("accepted"):
         return JSONResponse(out, status_code=400)
     return out
+
+
+# ---------- replay ----------
+@app.get("/api/history/range")
+async def history_range(request: Request):
+    require(request)
+    return store.snapshot_range()
+
+
+@app.get("/api/history")
+async def history(request: Request, t: float):
+    require(request)
+    snap = await asyncio.to_thread(store.get_snapshot, t)
+    if not snap:
+        raise HTTPException(404, "No recorded history yet")
+    return snap

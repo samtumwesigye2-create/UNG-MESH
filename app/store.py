@@ -1,5 +1,6 @@
 """SQLite storage: event log and restricted zones survive restarts."""
 import json
+import zlib
 import os
 import sqlite3
 import threading
@@ -15,6 +16,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, t REAL, sev TEXT, msg TEXT, ref TEXT, ack INTEGER);
             CREATE TABLE IF NOT EXISTS zones(id TEXT PRIMARY KEY, data TEXT);
             CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+            CREATE TABLE IF NOT EXISTS snaps(t REAL PRIMARY KEY, data BLOB);
             """)
             self.db.commit()
 
@@ -69,3 +71,29 @@ class Store:
             self.db.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('track_base',?)", (str(base + 5000),))
             self.db.commit()
         return base
+
+    # ---------- replay history ----------
+    def add_snapshot(self, t, obj):
+        blob = zlib.compress(json.dumps(obj, separators=(",", ":")).encode(), 6)
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO snaps(t,data) VALUES(?,?)", (t, blob))
+            self.db.commit()
+
+    def get_snapshot(self, t):
+        with self.lock:
+            r = self.db.execute("SELECT t,data FROM snaps WHERE t<=? ORDER BY t DESC LIMIT 1", (t,)).fetchone()
+            if not r:
+                r = self.db.execute("SELECT t,data FROM snaps ORDER BY t ASC LIMIT 1").fetchone()
+        if not r:
+            return None
+        return dict(json.loads(zlib.decompress(r[1])), t=r[0])
+
+    def snapshot_range(self):
+        with self.lock:
+            r = self.db.execute("SELECT MIN(t),MAX(t),COUNT(*) FROM snaps").fetchone()
+        return {"start": r[0], "end": r[1], "count": r[2]}
+
+    def prune_snapshots(self, before):
+        with self.lock:
+            self.db.execute("DELETE FROM snaps WHERE t<?", (before,))
+            self.db.commit()
